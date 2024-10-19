@@ -1,7 +1,10 @@
 import json
 import os
+import re
+import textwrap
 from datetime import datetime, timedelta
 
+import tiktoken
 from openai.types.chat import ChatCompletionMessage
 from termcolor import colored
 
@@ -202,3 +205,203 @@ def pretty_print_conversation(messages):
             print(colored(f"assistant: {message['content']}\n", role_to_color[message["role"]]))
         elif message["role"] == "tool":
             print(colored(f"function: {message['name']}: {message['content']}\n", role_to_color[message["role"]]))
+
+
+def split_text_simple(text, length_limit=2000):
+    """
+    Splits a given text into chunks each with maximum length as length_limit.
+    This function splits text without considering paragraph structure.
+
+    Parameters
+    ----------
+    text : str
+        The text to split.
+    length_limit : int, optional
+        The maximum character length of each chunk (default is 2000).
+
+    Returns
+    -------
+    list of str
+        The list of split chunks.
+    """
+    return textwrap.wrap(text, length_limit)
+
+
+def split_text_advanced(text, length_limit=2000):
+    """
+    Splits a given text into chunks each with maximum length as length_limit.
+    This function splits text considering paragraph structure.
+
+    Parameters
+    ----------
+    text : str
+        The text to split.
+    length_limit : int, optional
+        The maximum character length of each chunk (default is 2000).
+
+    Returns
+    -------
+    list of str
+        The list of split chunks respecting paragraph boundaries.
+    """
+    # Split text into paragraphs using single or double line breaks
+    paragraphs = re.split(r'\n\n|\n(?!\n)', text)
+    lines = []
+
+    for paragraph in paragraphs:
+        # Split each paragraph into lines with maximum length as length_limit
+        lines.extend(textwrap.wrap(paragraph, length_limit))
+
+    return lines
+
+
+def format_moderation_response(response, text):
+    """
+    Formats and prints the moderation response from OpenAI's API.
+
+    This function takes the response from the moderation API and the text that was checked.
+    It prints whether the text violates the content policy, the model used for the check,
+    the categories that were evaluated, and the corresponding scores for each category.
+
+    It does not return any value.
+
+    Parameters
+    ----------
+    response : object
+        The response object returned from OpenAI's moderation API.
+                         This should contain the results of the content moderation check,
+                         including categories and category scores.
+    text : str
+        The text that was submitted for moderation.
+    """
+
+    # Extracting categories and category scores from the response
+    categories = response.results[0].categories
+    category_scores = response.results[0].category_scores
+
+    # Informing if the text violates the content policy
+    print(f"Text violates content policy: \n{text}\n")
+
+    # Printing the model used for moderation
+    print(f"Moderation model: {response.model}\n")
+
+    # Iterating over the categories to print them
+    print("Categories:")
+    for category, value in categories.__dict__.items():
+        # Formatting category names and printing their values
+        print(f"  {category.replace('_', ' ').capitalize()}: {value}")
+
+    # Iterating over the category scores to print them
+    print("\nCategory Scores:")
+    for category, score in category_scores.__dict__.items():
+        # Formatting category names and printing their scores
+        print(f"  {category.replace('_', ' ').capitalize()}: {score:.2f}")
+
+
+def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613"):
+    """Return the number of tokens used by a list of messages."""
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        print("Warning: model not found. Using cl100k_base encoding.")
+        encoding = tiktoken.get_encoding("cl100k_base")
+    if model in {
+        "gpt-3.5-turbo-0613",
+        "gpt-3.5-turbo-16k-0613",
+        "gpt-4-0314",
+        "gpt-4-32k-0314",
+        "gpt-4-0613",
+        "gpt-4-32k-0613",
+    }:
+        tokens_per_message = 3
+        tokens_per_name = 1
+    elif model == "gpt-3.5-turbo-0301":
+        tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
+        tokens_per_name = -1  # if there's a name, the role is omitted
+    elif "gpt-3.5-turbo" in model:
+        print("Warning: gpt-3.5-turbo may update over time. Returning num tokens assuming gpt-3.5-turbo-0613.")
+        return num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613")
+    elif "gpt-4" in model:
+        print("Warning: gpt-4 may update over time. Returning num tokens assuming gpt-4-0613.")
+        return num_tokens_from_messages(messages, model="gpt-4-0613")
+    else:
+        raise NotImplementedError(
+            f"""num_tokens_from_messages() is not implemented for model {model}. See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens."""
+        )
+    num_tokens = 0
+    for message in messages:
+        num_tokens += tokens_per_message
+        message_dict = message
+        if isinstance(message, ChatCompletionMessage):
+            message_dict = message.model_dump()
+        for key, value in message_dict.items():
+            num_tokens += len(encoding.encode(get_safe_string(value)))
+            if key == "name":
+                num_tokens += tokens_per_name
+
+    num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
+    return num_tokens
+
+
+def get_safe_string(value):
+    """
+    Converts the input value to a string in a safe manner.
+
+    Parameters
+    ----------
+    value : str
+        The value to be converted to string.
+
+    Returns
+    ----------
+    A string representation of the input value.
+    """
+
+    if value is None:  # If the value is None
+        return ''  # Return an empty string
+    elif isinstance(value, str):  # If the value is already a string
+        return value  # Return the value as is
+    elif isinstance(value, dict) or isinstance(value, list):  # If the value is a JSON object or array
+        return json.dumps(value)  # Convert JSON object/array to string and return
+    else:  # For all other data types
+        return str(value)  # Convert the value to string and return
+
+
+def print_token_info(messages, model, response, price_per_input_token, price_per_output_token):
+    """
+    Prints the token count and cost information for the given messages and response.
+
+    Parameters
+    ----------
+    messages:
+        The messages for which the token count is to be calculated.
+    model:
+        The model used to calculate the token count.
+    response:
+        The response received from the OpenAI API, which includes the usage data.
+    price_per_input_token:
+        The cost per input token.
+    price_per_output_token:
+        The cost per output token.
+    """
+
+    # Calculate the number of tokens from the messages
+    tokens = num_tokens_from_messages(messages, model)
+    # Calculate the cost for the input tokens
+    cost = price_per_input_token * tokens
+    # Print the token count and cost
+    print(f"{tokens} prompt tokens counted by tiktoken. Cost: ${cost}")
+
+    # Get the number of prompt tokens from the response
+    prompt_tokens = response.usage.prompt_tokens
+    # Calculate the cost for the prompt tokens
+    cost = price_per_input_token * prompt_tokens
+    # Print the token count and cost
+    print(f'{prompt_tokens} prompt tokens counted by the OpenAI API. Cost: ${cost}')
+
+    # Get the number of completion tokens from the response
+    completion_tokens = response.usage.completion_tokens
+    # Calculate the cost for the completion tokens
+    cost = price_per_output_token * completion_tokens
+    # Print the token count and cost
+    print(f'{completion_tokens} completion tokens counted by the OpenAI API. Cost: ${cost}')
