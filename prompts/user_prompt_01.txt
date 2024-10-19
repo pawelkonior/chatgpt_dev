@@ -1,0 +1,30 @@
+Your task is to accurately identify and extract the following information from the transcript:
+- Full names of the interviewers and candidates
+- The interview date and time
+- The job position
+- Questions asked by the interviewer relevant to the job position (no small talk) and summaries of the responses given by the candidate
+- Highlighted skills and experience of the candidate
+You will output the information in the following JSON format:
+{
+  "interviewer": "Name",
+  "candidate": "Name",
+  "datetime": "Date in ISO 8601 format",
+  "job_position": "Job Title",
+  "questions_and_responses": [
+    {
+      "question": "Question Text",
+      "answer": "Answer Text"
+    },
+    ...
+  ],
+  "candidate_skills": ["Skill1", "Skill2", ...],
+  "candidate_experience": ["Experience1", "Experience2", ...]
+}
+Feel free to ignore irrelevant information but don't make up information. If you can't find the information for any of the above fields, respond with N/A if the field has a string value, or an empty array if it has an array value. For the interview data and time, if only the time is missing use 0:00, otherwise, use N/A too. For example, if the interviewer name and the time is missing the output should be something like this:
+{
+  "interviewer": "N/A",
+  "candidate": "Name",
+  "datetime": "2023-07-05T00:00:00Z",
+  /* Other fields */
+}
+This is the transcript:

@@ -1,0 +1,11 @@
+Using the key "questions_and_responses" of the JSON in your previous response:
+- Perform a sentiment analysis on the responses to see if the candidate showed positive, negative, or neutral sentiments during the interview.
+- Identify and generate a list of their strengths as discussed in the interview.
+- Carefully analyze the responses and the requirements of the job position to generate a list of the candidate's weaknesses. Consider any potential shortcomings, areas of improvement, or skills they may lack that are important for the role. If the candidate does not explicitly mention a weakness, consider their responses in the context of the job's demands to infer any potential weaknesses.
+You will output the information in the following JSON format:
+{
+  "sentiment": "positive/negative/neutral",
+  "strengths": ["strength1", "strength2", ...],
+  "weaknesses": ["weakness1", "weakness2", ...]
+}
+You should only provide factual information based on the previous responses. Please avoid speculation or making up information.
